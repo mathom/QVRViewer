@@ -1,0 +1,13 @@
+<RCC>
+    <qresource prefix="/shaders">
+        <file>unlit.frag</file>
+        <file>unlit.vert</file>
+    </qresource>
+    <qresource prefix="/textures">
+        <file>water.jpg</file>
+        <file>uvmap.png</file>
+    </qresource>
+    <qresource prefix="/models">
+        <file>monkey.obj</file>
+    </qresource>
+</RCC>
