@@ -87,13 +87,6 @@ void VRView::initializeGL()
 
     QVector<GLfloat> points = readObj(":/models/monkey.obj");
     m_vertCount = points.length();
-    /*
-    GLfloat points[] = {
-       0.0f,  1.0f,  0.0f,  0.5f,  1.0f,
-       0.5f,  0.0f,  0.0f,  1.0f,  0.0f,
-      -0.5f,  0.0f,  0.0f,  0.0f,  0.0f
-    };
-    */
 
     m_vertexBuffer.create();
     m_vertexBuffer.setUsagePattern(QGLBuffer::StaticDraw);
@@ -297,11 +290,9 @@ QMatrix4x4 VRView::viewProjection(vr::Hmd_Eye eye)
     s.scale(.5f);
 
     if (eye == vr::Eye_Left)
-        mat = m_leftProjection * m_leftPose * m_hmdPose * s;
+        return m_leftProjection * m_leftPose * m_hmdPose * s;
     else
-        mat = m_rightProjection * m_rightPose * m_hmdPose * s;
-
-    return mat;
+        return m_rightProjection * m_rightPose * m_hmdPose * s;
 }
 
 QString VRView::getTrackedDeviceString(vr::TrackedDeviceIndex_t device, vr::TrackedDeviceProperty prop, vr::TrackedPropertyError *error)

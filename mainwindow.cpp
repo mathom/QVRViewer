@@ -11,8 +11,8 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     vr = new VRView( this );
 
-    connect( vr, SIGNAL(deviceIdentifier(QString)), this, SLOT(setWindowTitle(QString)) );
-    connect( vr, SIGNAL(framesPerSecond(float)), this, SLOT(showFramerate(float)) );
+    connect(vr, SIGNAL(deviceIdentifier(QString)), this, SLOT(setWindowTitle(QString)));
+    connect(vr, SIGNAL(framesPerSecond(float)), this, SLOT(showFramerate(float)));
 
     ui->setupUi(this);
 
