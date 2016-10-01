@@ -13,13 +13,12 @@ void main()
 
     if (overUnder) {
         if (leftEye) {
-            fragTexCoord.t = fragTexCoord.t * 0.5;
+            fragTexCoord.t = fragTexCoord.t * 0.5 + 0.5;
         }
         else {
-            fragTexCoord.t = fragTexCoord.t * 0.5 + 0.5;
+            fragTexCoord.t = fragTexCoord.t * 0.5;
         }
     }
 
-    //gl_Position = vec4(vertex, 1.0f);
     gl_Position = transform * vec4(vertex, 1.0f);
 }

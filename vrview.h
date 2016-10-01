@@ -3,36 +3,15 @@
 
 #include <QOpenGLFunctions_4_1_Core>
 #include <QOpenGLWidget>
-#include <QGLBuffer>
+#include <QOpenGLBuffer>
 #include <QOpenGLVertexArrayObject>
-#include <QGLShaderProgram>
-#include <QGLFramebufferObject>
+#include <QOpenGLShaderProgram>
+#include <QOpenGLFramebufferObject>
 #include <QOpenGLDebugMessage>
 #include <QOpenGLDebugLogger>
 #include <QOpenGLTexture>
-#include <QTimer>
 #include <openvr.h>
 
-class FBOHandle
-{
-public:
-    FBOHandle(QOpenGLFunctions_4_1_Core *gl, int width, int height);
-    virtual ~FBOHandle();
-
-    void blitResolve();
-
-    QOpenGLFunctions_4_1_Core *gl;
-
-    bool ok;
-
-    int width, height;
-
-    GLuint depthBuffer;
-    GLuint renderTexture;
-    GLuint renderFBO;
-    GLuint resolveTexture;
-    GLuint resolveFBO;
-};
 
 class VRView : public QOpenGLWidget, protected QOpenGLFunctions_4_1_Core
 {
@@ -50,10 +29,13 @@ public:
     void loadPanorama(const QString &fileName, VRMode mode=OverUnder);
     void loadImageRelative(int offset);
 
+    QSize minimumSizeHint() const;
+
 signals:
     void framesPerSecond(float);
     void deviceIdentifier(const QString&);
     void frameSwap();
+    void statusMessage(const QString&);
 
 public slots:
 
@@ -76,7 +58,7 @@ private:
 
     void updateInput();
 
-    bool compileShader(QGLShaderProgram &shader,
+    bool compileShader(QOpenGLShaderProgram &shader,
                        const QString& vertexShaderPath,
                        const QString& fragmentShaderPath);
 
@@ -103,20 +85,19 @@ private:
 
     QOpenGLDebugLogger *m_logger;
 
-    QGLShaderProgram m_shader;
-    QGLBuffer m_vertexBuffer;
+    QOpenGLShaderProgram m_shader;
+    QOpenGLBuffer m_vertexBuffer;
     QOpenGLVertexArrayObject m_vao;
     QOpenGLTexture *m_texture;
     int m_vertCount;
 
     uint32_t m_eyeWidth, m_eyeHeight;
-    FBOHandle *m_leftBuffer, *m_rightBuffer;
-    //QGLFramebufferObject *m_leftBuffer;
-    //QGLFramebufferObject *m_rightBuffer;
-    int m_widgetWidth, m_widgetHeight;
+    //FBOHandle *m_leftBuffer, *m_rightBuffer;
+    QOpenGLFramebufferObject *m_leftBuffer;
+    QOpenGLFramebufferObject *m_rightBuffer;
+    QOpenGLFramebufferObject *m_resolveBuffer;
 
     int m_frames;
-    QTimer m_frameTimer;
 
     VRMode m_mode;
     QString m_imageDirectory;

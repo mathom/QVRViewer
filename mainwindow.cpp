@@ -19,9 +19,9 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(vr, SIGNAL(framesPerSecond(float)), this, SLOT(showFramerate(float)));
 
     ui->setupUi(this);
-    //vr->makeCurrent();
-    //vr->show();
     ui->rightLayout->addWidget(vr);
+
+    connect(vr, SIGNAL(statusMessage(QString)), this, SLOT(showStatus(QString)));
 }
 
 MainWindow::~MainWindow()
@@ -32,7 +32,12 @@ MainWindow::~MainWindow()
 
 void MainWindow::showFramerate(float fps)
 {
-    statusBar()->showMessage(QString("FPS: %1").arg(fps));
+    ui->fpsLabel->setText(tr("%1 FPS").arg(fps));
+}
+
+void MainWindow::showStatus(const QString &message)
+{
+    ui->statusBar->showMessage(message);
 }
 
 void MainWindow::on_action_Load_Panorama_triggered()
@@ -44,19 +49,13 @@ void MainWindow::on_action_Load_Panorama_triggered()
     fileDialog.setNameFilter("Images (*.png *.jpg)");
 
     if (settings.value("Load/PanoramaDir").isValid())
-    {
         fileDialog.setDirectory(settings.value("Load/PanoramaDir").toString());
-    }
     else
-    {
         fileDialog.setDirectory(QStandardPaths::standardLocations(QStandardPaths::PicturesLocation).first());
-    }
 
     if (fileDialog.exec())
     {
         settings.setValue("Load/PanoramaDir", fileDialog.directory().path());
-        qDebug() << fileDialog.saveState();
-        qDebug() << settings.value("Load/PanoramaDir").value<QByteArray>();
         vr->loadPanorama(fileDialog.selectedFiles().first());
     }
 }

@@ -19,6 +19,7 @@ public:
 
 protected slots:
     void showFramerate(float fps);
+    void showStatus(const QString &message);
 
 private slots:
     void on_action_Load_Panorama_triggered();

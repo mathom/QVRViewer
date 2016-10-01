@@ -5,7 +5,6 @@
 #include <QTimer>
 #include <QFileInfo>
 #include <QDir>
-#include <QDirIterator>
 #include "modelFormats.h"
 
 #define NEAR_CLIP 0.1f
@@ -14,12 +13,15 @@
 VRView::VRView(QWidget *parent) : QOpenGLWidget(parent),
     m_hmd(0), m_texture(0), m_vertCount(0),
     m_eyeWidth(0), m_eyeHeight(0), m_leftBuffer(0), m_rightBuffer(0),
-    m_widgetWidth(0), m_widgetHeight(0), m_frames(0), m_mode(None)
+    m_frames(0), m_mode(None)
 {
     memset(m_inputNext, 0, sizeof(m_inputNext));
     memset(m_inputNext, 0, sizeof(m_inputPrev));
 
-    connect(&m_frameTimer, SIGNAL(timeout()), this, SLOT(updateGL()));
+    QSizePolicy size;
+    size.setHorizontalPolicy(QSizePolicy::Expanding);
+    size.setVerticalPolicy(QSizePolicy::Expanding);
+    setSizePolicy(size);
 
     QTimer *fpsTimer = new QTimer(this);
     connect(fpsTimer, SIGNAL(timeout()), this, SLOT(updateFramerate()));
@@ -39,10 +41,12 @@ void VRView::loadPanorama(const QString &fileName, VRMode mode)
     {
         qDebug() << "loading" << fileName;
         delete m_texture;
-        m_texture = new QOpenGLTexture(QImage(fileName).mirrored());
+        m_texture = new QOpenGLTexture(QImage(fileName).mirrored(true, true));
         m_texture->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
         m_texture->setMagnificationFilter(QOpenGLTexture::Linear);
         qDebug() << "loaded texture" << m_texture->width() << "x" << m_texture->height();
+        emit statusMessage(tr("Loaded %1 (%2x%3)").arg(info.fileName())
+                           .arg(m_texture->width()).arg(m_texture->height()));
         m_mode = mode;
 
         m_currentImage = fileName;
@@ -71,6 +75,11 @@ void VRView::loadImageRelative(int offset)
     }
 }
 
+QSize VRView::minimumSizeHint() const
+{
+    return QSize(1,1);
+}
+
 void VRView::updateFramerate()
 {
     if (m_frames > 0)
@@ -90,6 +99,7 @@ void VRView::shutdown()
 
     delete m_leftBuffer;
     delete m_rightBuffer;
+    delete m_resolveBuffer;
 
     if (m_hmd)
     {
@@ -133,12 +143,12 @@ void VRView::initializeGL()
     m_vao.create();
     m_vao.bind();
 
-    QVector<GLfloat> points = readObj(":/models/low_sphere.obj");
+    QVector<GLfloat> points = readObj(":/models/sphere.obj");
     m_vertCount = points.length();
     qDebug() << "loaded" << m_vertCount << "verts";
 
     m_vertexBuffer.create();
-    m_vertexBuffer.setUsagePattern(QGLBuffer::StaticDraw);
+    m_vertexBuffer.setUsagePattern(QOpenGLBuffer::StaticDraw);
     m_vertexBuffer.bind();
 
     m_vertexBuffer.allocate(points.data(), points.length() * sizeof(GLfloat));
@@ -156,8 +166,6 @@ void VRView::initializeGL()
     m_texture = new QOpenGLTexture(QImage(":/textures/uvmap.png"));
 
     initVR();
-
-    //m_frameTimer.start();
 }
 
 void VRView::paintGL()
@@ -170,29 +178,42 @@ void VRView::paintGL()
         glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
         glViewport(0, 0, m_eyeWidth, m_eyeHeight);
 
-        glEnable(GL_MULTISAMPLE);
-        glBindFramebuffer(GL_FRAMEBUFFER, m_leftBuffer->renderFBO);
-        renderEye(vr::Eye_Left);
-        m_leftBuffer->blitResolve();
+        QRect sourceRect(0, 0, m_eyeWidth, m_eyeHeight);
 
         glEnable(GL_MULTISAMPLE);
-        glBindFramebuffer(GL_FRAMEBUFFER, m_rightBuffer->renderFBO);
+        m_leftBuffer->bind();
+        renderEye(vr::Eye_Left);
+        m_leftBuffer->release();
+
+        QRect targetLeft(0, 0, m_eyeWidth, m_eyeHeight);
+        QOpenGLFramebufferObject::blitFramebuffer(m_resolveBuffer, targetLeft,
+                                                  m_leftBuffer, sourceRect);
+
+        glEnable(GL_MULTISAMPLE);
+        m_rightBuffer->bind();
         renderEye(vr::Eye_Right);
-        m_rightBuffer->blitResolve();
+        m_rightBuffer->release();
+        QRect targetRight(m_eyeWidth, 0, m_eyeWidth, m_eyeHeight);
+        QOpenGLFramebufferObject::blitFramebuffer(m_resolveBuffer, targetRight,
+                                                  m_rightBuffer, sourceRect);
     }
 
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glViewport(0, 0, m_widgetWidth, m_widgetHeight);
+    glViewport(0, 0, width(), height());
     glDisable(GL_MULTISAMPLE);
     renderEye(vr::Eye_Right);
 
     if (m_hmd)
     {
-        vr::Texture_t leftEyeTexture = { (void*)m_leftBuffer->resolveTexture, vr::API_OpenGL, vr::ColorSpace_Gamma };
-        vr::VRCompositor()->Submit(vr::Eye_Left, &leftEyeTexture);
-        vr::Texture_t rightEyeTexture = { (void*)m_rightBuffer->resolveTexture, vr::API_OpenGL, vr::ColorSpace_Gamma };
-        vr::VRCompositor()->Submit(vr::Eye_Right, &rightEyeTexture);
+        vr::VRTextureBounds_t leftRect = { 0.0f, 0.0f, 0.5f, 1.0f };
+        vr::VRTextureBounds_t rightRect = { 0.5f, 0.0f, 1.0f, 1.0f };
+        vr::Texture_t composite = { (void*)m_resolveBuffer->texture(), vr::API_OpenGL, vr::ColorSpace_Gamma };
+
+        vr::VRCompositor()->Submit(vr::Eye_Left, &composite, &leftRect);
+        vr::VRCompositor()->Submit(vr::Eye_Right, &composite, &rightRect);
     }
+
+    //vr::VRCompositor()->PostPresentHandoff();
 
     m_frames++;
 
@@ -214,10 +235,9 @@ void VRView::renderEye(vr::Hmd_Eye eye)
     glDrawArrays(GL_TRIANGLES, 0, m_vertCount);
 }
 
-void VRView::resizeGL(int w, int h)
+void VRView::resizeGL(int, int)
 {
-    m_widgetWidth = w;
-    m_widgetHeight = qMax(h, 1);
+    // do nothing
 }
 
 void VRView::initVR()
@@ -252,8 +272,19 @@ void VRView::initVR()
     // setup frame buffers for eyes
     m_hmd->GetRecommendedRenderTargetSize(&m_eyeWidth, &m_eyeHeight);
 
-    m_leftBuffer = new FBOHandle(this, m_eyeWidth, m_eyeHeight);
-    m_rightBuffer = new FBOHandle(this, m_eyeWidth, m_eyeHeight);
+    QOpenGLFramebufferObjectFormat buffFormat;
+    buffFormat.setAttachment(QOpenGLFramebufferObject::Depth);
+    buffFormat.setInternalTextureFormat(GL_RGBA8);
+    buffFormat.setSamples(4);
+
+    m_leftBuffer = new QOpenGLFramebufferObject(m_eyeWidth, m_eyeHeight, buffFormat);
+    m_rightBuffer = new QOpenGLFramebufferObject(m_eyeWidth, m_eyeHeight, buffFormat);
+
+    QOpenGLFramebufferObjectFormat resolveFormat;
+    resolveFormat.setInternalTextureFormat(GL_RGBA8);
+    buffFormat.setSamples(0);
+
+    m_resolveBuffer = new QOpenGLFramebufferObject(m_eyeWidth*2, m_eyeHeight, resolveFormat);
 
     // turn on compositor
     if (!vr::VRCompositor())
@@ -330,13 +361,13 @@ void VRView::updateInput()
 
 }
 
-bool VRView::compileShader(QGLShaderProgram &shader, const QString &vertexShaderPath, const QString &fragmentShaderPath)
+bool VRView::compileShader(QOpenGLShaderProgram &shader, const QString &vertexShaderPath, const QString &fragmentShaderPath)
 {
-    bool result = shader.addShaderFromSourceFile(QGLShader::Vertex, vertexShaderPath);
+    bool result = shader.addShaderFromSourceFile(QOpenGLShader::Vertex, vertexShaderPath);
     if (!result)
         qCritical() << shader.log();
 
-    result = shader.addShaderFromSourceFile(QGLShader::Fragment, fragmentShaderPath);
+    result = shader.addShaderFromSourceFile(QOpenGLShader::Fragment, fragmentShaderPath);
     if (!result)
         qCritical() << shader.log();
 
@@ -401,66 +432,4 @@ QString VRView::getTrackedDeviceString(vr::TrackedDeviceIndex_t device, vr::Trac
     delete [] buf;
 
     return result;
-}
-
-FBOHandle::FBOHandle(QOpenGLFunctions_4_1_Core *gl, int width, int height) :
-    gl(gl), ok(false), width(width), height(height),
-    depthBuffer(0), renderTexture(0), renderFBO(0),
-    resolveTexture(0), resolveFBO(0)
-{
-    gl->glGenFramebuffers(1, &renderFBO );
-    gl->glBindFramebuffer(GL_FRAMEBUFFER, renderFBO);
-
-    gl->glGenRenderbuffers(1, &depthBuffer);
-    gl->glBindRenderbuffer(GL_RENDERBUFFER, depthBuffer);
-    gl->glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH_COMPONENT, width, height);
-    gl->glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER,	depthBuffer);
-
-    gl->glGenTextures(1, &renderTexture);
-    gl->glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, renderTexture);
-    gl->glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGBA8, width, height, true);
-    gl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, renderTexture, 0);
-
-    gl->glGenFramebuffers(1, &resolveFBO);
-    gl->glBindFramebuffer(GL_FRAMEBUFFER, resolveFBO);
-
-    gl->glGenTextures(1, &resolveTexture);
-    gl->glBindTexture(GL_TEXTURE_2D, resolveTexture);
-    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    gl->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    gl->glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    gl->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, resolveTexture, 0);
-
-    // check FBO status
-    GLenum status = gl->glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE)
-    {
-        ok = false;
-        return;
-    }
-
-    gl->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    ok = true;
-}
-
-FBOHandle::~FBOHandle()
-{
-    gl->glDeleteRenderbuffers(1, &depthBuffer);
-    gl->glDeleteTextures(1, &renderTexture);
-    gl->glDeleteFramebuffers(1, &renderFBO);
-    gl->glDeleteTextures(1, &resolveTexture);
-    gl->glDeleteFramebuffers(1, &resolveFBO);
-}
-
-void FBOHandle::blitResolve()
-{
-    gl->glDisable(GL_MULTISAMPLE);
-    gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, renderFBO);
-    gl->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolveFBO);
-
-    gl->glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-
-    gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    gl->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0 );
 }

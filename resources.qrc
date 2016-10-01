@@ -10,6 +10,5 @@
     <qresource prefix="/models">
         <file>monkey.obj</file>
         <file>sphere.obj</file>
-        <file>low_sphere.obj</file>
     </qresource>
 </RCC>
