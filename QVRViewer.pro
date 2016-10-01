@@ -12,15 +12,15 @@ TARGET = QVRViewer
 TEMPLATE = app
 
 
-SOURCES += main.cpp\
-        mainwindow.cpp \
-    vrview.cpp
+SOURCES += src/main.cpp\
+    src/mainwindow.cpp \
+    src/vrview.cpp
 
-HEADERS  += mainwindow.h \
-    vrview.h \
-    modelformats.h
+HEADERS  += src/mainwindow.h \
+    src/modelformats.h \
+    src/vrview.h
 
-FORMS    += mainwindow.ui
+FORMS    += src/mainwindow.ui
 
 # from http://stackoverflow.com/a/10058744
 # Copies the given files to the destination directory
