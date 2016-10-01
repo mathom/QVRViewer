@@ -1,10 +1,11 @@
 #include "vrview.h"
-#include <QGL>
 #include <QMessageBox>
 #include <QString>
 #include <QTimer>
 #include <QFileInfo>
 #include <QDir>
+#include <QKeyEvent>
+#include <QApplication>
 #include "modelFormats.h"
 
 #define NEAR_CLIP 0.1f
@@ -24,8 +25,10 @@ VRView::VRView(QWidget *parent) : QOpenGLWidget(parent),
     setSizePolicy(size);
 
     QTimer *fpsTimer = new QTimer(this);
-    connect(fpsTimer, SIGNAL(timeout()), this, SLOT(updateFramerate()));
+    connect(fpsTimer, &QTimer::timeout, this, &VRView::updateFramerate);
     fpsTimer->start(1000);
+
+    grabKeyboard();
 }
 
 VRView::~VRView()
@@ -238,6 +241,25 @@ void VRView::renderEye(vr::Hmd_Eye eye)
 void VRView::resizeGL(int, int)
 {
     // do nothing
+}
+
+void VRView::keyPressEvent(QKeyEvent *event)
+{
+    switch (event->key()) {
+    case Qt::Key_Left:
+    case Qt::Key_Backspace:
+        loadImageRelative(-1);
+        break;
+    case Qt::Key_Right:
+    case Qt::Key_Space:
+        loadImageRelative(1);
+        break;
+    case Qt::Key_Escape:
+        QApplication::quit();
+        break;
+    default:
+        event->ignore();
+    }
 }
 
 void VRView::initVR()

@@ -15,13 +15,13 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     vr = new VRView(this);
 
-    connect(vr, SIGNAL(deviceIdentifier(QString)), this, SLOT(setWindowTitle(QString)));
-    connect(vr, SIGNAL(framesPerSecond(float)), this, SLOT(showFramerate(float)));
+    connect(vr, &VRView::deviceIdentifier, this, &MainWindow::setWindowTitle);
+    connect(vr, &VRView::framesPerSecond, this, &MainWindow::showFramerate);
 
     ui->setupUi(this);
     ui->rightLayout->addWidget(vr);
 
-    connect(vr, SIGNAL(statusMessage(QString)), this, SLOT(showStatus(QString)));
+    connect(vr, &VRView::statusMessage, this, &MainWindow::showStatus);
 }
 
 MainWindow::~MainWindow()
