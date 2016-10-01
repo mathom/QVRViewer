@@ -3,16 +3,22 @@
 #include <QMessageBox>
 #include <QString>
 #include <QTimer>
+#include <QFileInfo>
+#include <QDir>
+#include <QDirIterator>
 #include "modelFormats.h"
 
 #define NEAR_CLIP 0.1f
 #define FAR_CLIP 10000.0f
 
-VRView::VRView(QWidget *parent) : QGLWidget(parent),
-    m_texture(0), m_vertCount(0),
+VRView::VRView(QWidget *parent) : QOpenGLWidget(parent),
+    m_hmd(0), m_texture(0), m_vertCount(0),
     m_eyeWidth(0), m_eyeHeight(0), m_leftBuffer(0), m_rightBuffer(0),
-    m_widgetWidth(0), m_widgetHeight(0), m_frames(0)
+    m_widgetWidth(0), m_widgetHeight(0), m_frames(0), m_mode(None)
 {
+    memset(m_inputNext, 0, sizeof(m_inputNext));
+    memset(m_inputNext, 0, sizeof(m_inputPrev));
+
     connect(&m_frameTimer, SIGNAL(timeout()), this, SLOT(updateGL()));
 
     QTimer *fpsTimer = new QTimer(this);
@@ -23,6 +29,46 @@ VRView::VRView(QWidget *parent) : QGLWidget(parent),
 VRView::~VRView()
 {
     shutdown();
+}
+
+void VRView::loadPanorama(const QString &fileName, VRMode mode)
+{
+    QFileInfo info(fileName);
+
+    if (info.exists())
+    {
+        qDebug() << "loading" << fileName;
+        delete m_texture;
+        m_texture = new QOpenGLTexture(QImage(fileName).mirrored());
+        m_texture->setMinificationFilter(QOpenGLTexture::LinearMipMapLinear);
+        m_texture->setMagnificationFilter(QOpenGLTexture::Linear);
+        qDebug() << "loaded texture" << m_texture->width() << "x" << m_texture->height();
+        m_mode = mode;
+
+        m_currentImage = fileName;
+    }
+}
+
+void VRView::loadImageRelative(int offset)
+{
+    QFileInfo info(m_currentImage);
+
+    if (info.exists())
+    {
+        QDir dir = info.dir().path();
+        QStringList filters;
+        filters << "*.jpg" << "*.png";
+        QFileInfoList files = dir.entryInfoList(filters, QDir::NoDotAndDotDot|QDir::Files);
+
+        int index = files.indexOf(info);
+
+        if (offset < 0)
+            offset += files.length();
+
+        QFileInfo selected = files.at((index+offset)%files.length());
+        qDebug() << "loading relative image" << selected.fileName();
+        loadPanorama(selected.absoluteFilePath(), m_mode);
+    }
 }
 
 void VRView::updateFramerate()
@@ -64,6 +110,7 @@ void VRView::initializeGL()
 {
     initializeOpenGLFunctions();
 
+#ifdef QT_DEBUG
     m_logger = new QOpenGLDebugLogger(this);
 
     connect(m_logger, SIGNAL(messageLogged(QOpenGLDebugMessage)),
@@ -74,6 +121,7 @@ void VRView::initializeGL()
         m_logger->startLogging(QOpenGLDebugLogger::SynchronousLogging);
         m_logger->enableMessages();
     }
+#endif
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_TEXTURE_2D);
@@ -85,14 +133,15 @@ void VRView::initializeGL()
     m_vao.create();
     m_vao.bind();
 
-    QVector<GLfloat> points = readObj(":/models/monkey.obj");
+    QVector<GLfloat> points = readObj(":/models/low_sphere.obj");
     m_vertCount = points.length();
+    qDebug() << "loaded" << m_vertCount << "verts";
 
     m_vertexBuffer.create();
     m_vertexBuffer.setUsagePattern(QGLBuffer::StaticDraw);
     m_vertexBuffer.bind();
 
-    m_vertexBuffer.allocate(points.data(), 5 * points.length() * sizeof(GLfloat));
+    m_vertexBuffer.allocate(points.data(), points.length() * sizeof(GLfloat));
 
     m_shader.bind();
 
@@ -108,25 +157,34 @@ void VRView::initializeGL()
 
     initVR();
 
-    m_frameTimer.start();
+    //m_frameTimer.start();
 }
 
 void VRView::paintGL()
 { 
-    updatePoses();
+    if (m_hmd)
+    {
+        updatePoses();
+        updateInput();
 
-    glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
-    glViewport(0, 0, m_eyeWidth, m_eyeHeight);
+        glClearColor(0.15f, 0.15f, 0.18f, 1.0f);
+        glViewport(0, 0, m_eyeWidth, m_eyeHeight);
 
-    glEnable(GL_MULTISAMPLE);
-    glBindFramebuffer(GL_FRAMEBUFFER, m_leftBuffer->renderFBO);
-    renderEye(vr::Eye_Left);
-    m_leftBuffer->blitResolve();
+        glEnable(GL_MULTISAMPLE);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_leftBuffer->renderFBO);
+        renderEye(vr::Eye_Left);
+        m_leftBuffer->blitResolve();
 
-    glEnable(GL_MULTISAMPLE);
-    glBindFramebuffer(GL_FRAMEBUFFER, m_rightBuffer->renderFBO);
+        glEnable(GL_MULTISAMPLE);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_rightBuffer->renderFBO);
+        renderEye(vr::Eye_Right);
+        m_rightBuffer->blitResolve();
+    }
+
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glViewport(0, 0, m_widgetWidth, m_widgetHeight);
+    glDisable(GL_MULTISAMPLE);
     renderEye(vr::Eye_Right);
-    m_rightBuffer->blitResolve();
 
     if (m_hmd)
     {
@@ -136,14 +194,9 @@ void VRView::paintGL()
         vr::VRCompositor()->Submit(vr::Eye_Right, &rightEyeTexture);
     }
 
-    glFinish();
-
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glViewport(0, 0, m_widgetWidth, m_widgetHeight);
-    glDisable(GL_MULTISAMPLE);
-    renderEye(vr::Eye_Right);
-
     m_frames++;
+
+    update();
 }
 
 void VRView::renderEye(vr::Hmd_Eye eye)
@@ -156,11 +209,8 @@ void VRView::renderEye(vr::Hmd_Eye eye)
     m_texture->bind(0);
 
     m_shader.setUniformValue("transform", viewProjection(eye));
-    glDrawArrays(GL_TRIANGLES, 0, m_vertCount);
-
-    QMatrix4x4 m;
-    m.translate(2, 0, 0);
-    m_shader.setUniformValue("transform", viewProjection(eye)*m);
+    m_shader.setUniformValue("leftEye", eye==vr::Eye_Left);
+    m_shader.setUniformValue("overUnder", m_mode==VRView::OverUnder);
     glDrawArrays(GL_TRIANGLES, 0, m_vertCount);
 }
 
@@ -191,8 +241,6 @@ void VRView::initVR()
 
     m_leftProjection = vrMatrixToQt(m_hmd->GetProjectionMatrix(vr::Eye_Left, NEAR_CLIP, FAR_CLIP, vr::API_OpenGL));
     m_leftPose = vrMatrixToQt(m_hmd->GetEyeToHeadTransform(vr::Eye_Left)).inverted();
-    qDebug() << "right eye" << m_rightProjection << m_rightPose;
-    qDebug() << "left eye" << m_leftProjection << m_leftPose;
 
     QString ident;
     ident.append("QVRViewer - ");
@@ -216,7 +264,9 @@ void VRView::initVR()
         return;
     }
 
+#ifdef QT_DEBUG
     vr::VRCompositor()->ShowMirrorWindow();
+#endif
 }
 
 void VRView::updatePoses()
@@ -235,6 +285,49 @@ void VRView::updatePoses()
     {
         m_hmdPose = m_matrixDevicePose[vr::k_unTrackedDeviceIndex_Hmd].inverted();
     }
+}
+
+void VRView::updateInput()
+{
+    vr::VREvent_t event;
+    while(m_hmd->PollNextEvent(&event, sizeof(event)))
+    {
+        //ProcessVREvent( event );
+    }
+
+    for(vr::TrackedDeviceIndex_t i=0; i<vr::k_unMaxTrackedDeviceCount; i++ )
+    {
+        vr::VRControllerState_t state;
+        if(m_hmd->GetControllerState(i, &state))
+        {
+            if (state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_SteamVR_Touchpad))
+            {
+                if (!m_inputNext[i])
+                {
+                    loadImageRelative(1);
+                    m_inputNext[i] = true;
+                }
+            }
+            else if (m_inputNext[i])
+            {
+                m_inputNext[i] = false;
+            }
+
+            if (state.ulButtonPressed & vr::ButtonMaskFromId(vr::k_EButton_Grip))
+            {
+                if (!m_inputPrev[i])
+                {
+                    loadImageRelative(-1);
+                    m_inputPrev[i] = true;
+                }
+            }
+            else if (m_inputPrev[i])
+            {
+                m_inputPrev[i] = false;
+            }
+        }
+    }
+
 }
 
 bool VRView::compileShader(QGLShaderProgram &shader, const QString &vertexShaderPath, const QString &fragmentShaderPath)
@@ -287,7 +380,7 @@ void VRView::glUniformMatrix4(GLint location, GLsizei count, GLboolean transpose
 QMatrix4x4 VRView::viewProjection(vr::Hmd_Eye eye)
 {
     QMatrix4x4 s;
-    s.scale(.5f);
+    s.scale(1000.0f);
 
     if (eye == vr::Eye_Left)
         return m_leftProjection * m_leftPose * m_hmdPose * s;

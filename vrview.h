@@ -2,7 +2,7 @@
 #define VRVIEW_H
 
 #include <QOpenGLFunctions_4_1_Core>
-#include <QGLWidget>
+#include <QOpenGLWidget>
 #include <QGLBuffer>
 #include <QOpenGLVertexArrayObject>
 #include <QGLShaderProgram>
@@ -34,12 +34,21 @@ public:
     GLuint resolveFBO;
 };
 
-class VRView : public QGLWidget, protected QOpenGLFunctions_4_1_Core
+class VRView : public QOpenGLWidget, protected QOpenGLFunctions_4_1_Core
 {
     Q_OBJECT
 public:
     explicit VRView(QWidget *parent = 0);
     virtual ~VRView();
+
+    enum VRMode {
+        None=0,
+        OverUnder,
+        SideBySide
+    };
+
+    void loadPanorama(const QString &fileName, VRMode mode=OverUnder);
+    void loadImageRelative(int offset);
 
 signals:
     void framesPerSecond(float);
@@ -64,6 +73,8 @@ private:
     void renderEye(vr::Hmd_Eye eye);
 
     void updatePoses();
+
+    void updateInput();
 
     bool compileShader(QGLShaderProgram &shader,
                        const QString& vertexShaderPath,
@@ -106,6 +117,13 @@ private:
 
     int m_frames;
     QTimer m_frameTimer;
+
+    VRMode m_mode;
+    QString m_imageDirectory;
+    QString m_currentImage;
+
+    bool m_inputNext[vr::k_unMaxTrackedDeviceCount];
+    bool m_inputPrev[vr::k_unMaxTrackedDeviceCount];
 };
 
 #endif // VRVIEW_H

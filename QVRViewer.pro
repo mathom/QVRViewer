@@ -46,18 +46,17 @@ defineTest(copyToDestdir) {
 
 
 win32 {
+    RC_FILE = win32.rc
+
     contains(QT_ARCH, i386) {
 message("32 bit build")
         LIBS += -L$$PWD/extern/openvr/lib/win32/ \
                 -lopenvr_api -lopengl32
-        copyToDestdir($${PWD}/extern/glew/bin/Release/Win32/glew32.dll)
         copyToDestdir($${PWD}/extern/openvr/bin/win32/openvr_api.dll)
     } else {
 message("64 bit build")
         LIBS += -L$$PWD/extern/openvr/lib/win64/ \
                 -lopenvr_api -lopengl32
-message($${LIBS})
-        copyToDestdir($${PWD}/extern/glew/bin/Release/x64/glew32.dll)
         copyToDestdir($${PWD}/extern/openvr/bin/win64/openvr_api.dll)
     }
 }
@@ -97,4 +96,6 @@ QMAKE_POST_LINK += $${DEPLOY_COMMAND} $${DEPLOY_TARGET} $$escape_expand(\\n\\t)
 RESOURCES += \
     resources.qrc
 
-DISTFILES +=
+DISTFILES += \
+    win32.rc \
+    viewer.ico

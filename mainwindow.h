@@ -20,6 +20,9 @@ public:
 protected slots:
     void showFramerate(float fps);
 
+private slots:
+    void on_action_Load_Panorama_triggered();
+
 private:
     Ui::MainWindow *ui;
     VRView *vr;
